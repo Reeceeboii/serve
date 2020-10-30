@@ -52,9 +52,16 @@ func serve(c *cli.Context) {
 		log.Println("\t[-v]Root directory is " + root)
 	}
 
+	// set up our router
 	mux := http.NewServeMux()
 	server := http.FileServer(http.Dir(root))
-	mux.Handle("/", logMiddleware(server))
+
+	// use logging middleware by default, but only chain non recursive middleware if the setting is enabled
+	if settings.nonRecursiveShare {
+		mux.Handle("/", nonRecursiveSharingMiddleware(logMiddleware(server)))
+	} else {
+		mux.Handle("/", logMiddleware(server))
+	}
 
 	log.Println("\t   LOCAL | Navigate to: 127.0.0.1:" + settings.port)
 	log.Println("\t NETWORK | Navigate to: " + clientInfo.localOutboundIP.String() + ":" + settings.port)
@@ -70,20 +77,36 @@ func getServerRoot(pathArg string) (string, error) {
 	return filepath.Abs(pathArg)
 }
 
-// logging
+// logging middleware
 func logMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// if the request comes in for a directory and the user has enabled non recursive directory sharing,
-		// we don't want the request to reach the file server
-		if strings.HasSuffix(r.URL.Path, "/") && settings.nonRecursiveShare && len(r.URL.Path) > 1 {
-			if settings.verbose {
-				log.Println("\t[-v]Incoming request @ " + r.URL.Path + " DIR - BLOCKED w/ 404 response")
-				http.NotFound(w, r)
-				return
+		if settings.verbose {
+			// if the request is coming from the host system (local ipv6)
+			if strings.HasPrefix(r.RemoteAddr, "[::1]") {
+				log.Println("\t[-v]Incoming request @ " + r.URL.Path + " from localhost" + r.RemoteAddr[5:])
+			} else {
+				log.Println("\t[-v]Incoming request @ " + r.URL.Path + " from " + r.RemoteAddr)
 			}
 		}
-		if settings.verbose {
-			log.Println("\t[-v]Incoming request @ " + r.URL.Path)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// middleware wrapped around requests when non recursive directory sharing is enabled via the -nr flag
+func nonRecursiveSharingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		/*
+			If the request comes in for a directory and the user has enabled non recursive directory sharing,
+			we don't want the request to reach the file server. However, it is important to check that the path
+			isn't both a directory (ending in '/') AND only of len() 1, as that would block path '/' itself and make
+			the root of the server inaccessible.
+		*/
+		if strings.HasSuffix(r.URL.Path, "/") && len(r.URL.Path) > 1 {
+			if settings.verbose {
+				log.Println("\t[-v]Incoming request @ " + r.URL.Path + " DIR - BLOCKED w/ 404 response")
+			}
+			http.NotFound(w, r)
+			return
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -109,6 +132,8 @@ func isPortAvailable(port string) bool {
 	return true
 }
 
+// get the local address used for outbound requests, used to output to the user the address that
+// can be used to access their server from elsewhere inside their network
 func getOutboundIPAddress() net.IP {
 	if settings.verbose {
 		log.Println("\t[-v]Querying local outbound IP address")
@@ -141,7 +166,7 @@ var app = cli.App{
 		&cli.StringFlag{
 			Name:     "directory",
 			Value:    settings.directory,
-			Required: true,
+			Required: false,
 			Aliases:  []string{"d"},
 			Usage:    "The directory to be served",
 		},
