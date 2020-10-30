@@ -43,7 +43,7 @@ func serve(c *cli.Context) {
 	server := http.FileServer(http.Dir(root))
 	http.Handle("/", server)
 	if !settings.recursiveShare {
-
+		http.NotFoundHandler()
 	}
 	log.Println("Navigate to: 127.0.0.1:" + settings.port)
 	err = http.ListenAndServe(":"+settings.port, nil)
@@ -57,8 +57,9 @@ func getServerRoot(pathArg string) (string, error) {
 	return filepath.Abs(pathArg)
 }
 
-func nonRecursiveHandler(writer http.ResponseWriter, r *http.Request) string {
-	return "go away"
+func nonRecursiveHandler(writer http.ResponseWriter, r *http.Request) {
+	writer.Header().Set("Status-Code", "404")
+	writer.Write([]byte("Recursive sharing is disabled"))
 }
 
 // given a port, check if that port is open for our program to attach itself to
@@ -127,6 +128,7 @@ var app = cli.App{
 			os.Exit(1)
 		}
 		if settings.verbose {
+			log.Printf("\tSettings: %+v\n", settings)
 			log.Println("\t[-v]Starting server...")
 		}
 		serve(c)
