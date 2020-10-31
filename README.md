@@ -13,6 +13,8 @@ The port used for connections depends on the provided flags. The default port is
 * From elsewhere on your network: `192.168.0.25:port` where `192.168.0.25` is your machine's IP. Serve will attempt to 
 tell you what this address is during launch.
 
+**Make sure your chosen port is open on your system's firewall if there are connection issues**
+
 ## Help
 * `> serve -h`
 
