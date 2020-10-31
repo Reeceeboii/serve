@@ -59,3 +59,6 @@ coming to the server as a new request*
 
 *Serve, on local port 4500, the `~/share` directory, with verbose logging and non recursive sharing enabled but browser 
 caching disabled.*
+
+## Releases
+See [releases](https://github.com/Reeceeboii/serve/releases)
