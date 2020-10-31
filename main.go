@@ -11,7 +11,11 @@ import (
 )
 
 const (
-	defaultPort = "5000"
+	defaultPort              = "5000"
+	defaultDirectory         = "."
+	defaultVerbose           = false
+	defaultNonRecursiveShare = false
+	defaultNonCached         = false
 )
 
 // global settings read in from cli globals
@@ -24,6 +28,8 @@ type settingsType struct {
 	verbose bool
 	// will the directory not be shared recursively (exc. children)
 	nonRecursiveShare bool
+	// is http caching disabled?
+	nonCached bool
 }
 
 // some info about the client
@@ -32,7 +38,13 @@ type clientInfoType struct {
 }
 
 // default settings
-var settings = settingsType{defaultPort, ".", false, false}
+var settings = settingsType{
+	defaultPort,
+	defaultDirectory,
+	defaultVerbose,
+	defaultNonRecursiveShare,
+	defaultNonCached,
+}
 
 // set up client settings
 var clientInfo = clientInfoType{nil}
@@ -62,9 +74,9 @@ func serve(c *cli.Context) {
 
 	// use logging middleware by default, but only chain non recursive middleware if the setting is enabled
 	if settings.nonRecursiveShare {
-		mux.Handle("/", nonRecursiveSharingMiddleware(logMiddleware(server)))
+		mux.Handle("/", nonRecursiveSharingMiddleware(headerMiddleware(logMiddleware(server))))
 	} else {
-		mux.Handle("/", logMiddleware(server))
+		mux.Handle("/", headerMiddleware(logMiddleware(server)))
 	}
 
 	log.Println("\t   LOCAL | Navigate to: 127.0.0.1:" + settings.port)
@@ -112,23 +124,23 @@ func nonRecursiveSharingMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 			// reject any directory requests
-		} else if strings.Contains(path, "/") && path[len(path)-1] == '/' {
+		} else if strings.Contains(path, "/") && strings.Count(path, "/") > 1 {
 			if settings.verbose {
 				log.Println("\t[-v]Incoming request @ " + r.URL.Path + " DIR - BLOCKED w/ 404 response")
 			}
 			http.NotFound(w, r)
 			return
 		}
-		/*
-			if len(r.URL.Path) > 1 && (strings.Contains(r.URL.Path, "/") || r.URL.Path[0] != '/') {
-				if settings.verbose {
-					log.Println("\t[-v]Incoming request @ " + r.URL.Path + " DIR - BLOCKED w/ 404 response")
-				}
-				http.NotFound(w, r)
-				return
-			}
-		*/
+		next.ServeHTTP(w, r)
+	})
+}
 
+// middleware that handles the http response headers
+func headerMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !settings.nonCached {
+			w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -172,11 +184,18 @@ func getOutboundIPAddress() net.IP {
 	if settings.verbose {
 		log.Println("\t[-v]Querying local outbound IP address")
 	}
+
 	conn, err := net.Dial("udp", "1.2.3.4:80")
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer conn.Close()
+
+	defer func() {
+		if err := conn.Close(); err != nil {
+
+		}
+	}()
+
 	outbound := conn.LocalAddr().(*net.UDPAddr)
 	if settings.verbose {
 		log.Println("\t[-v]Local outbound IP address is " + outbound.IP.String())
@@ -218,6 +237,13 @@ var app = cli.App{
 			Aliases:  []string{"nr"},
 			Usage:    "Disables recursive sharing (disallows access to child directories of shared root directory",
 		},
+		&cli.BoolFlag{
+			Name:     "no-caching",
+			Value:    settings.nonCached,
+			Required: false,
+			Aliases:  []string{"nc"},
+			Usage:    "Disables HTTP Cache-Control headers to allow browser caching of server responses",
+		},
 	},
 	// anon func fired at program launch
 	Action: func(c *cli.Context) error {
@@ -225,6 +251,7 @@ var app = cli.App{
 		settings.directory = c.String("directory")
 		settings.verbose = c.Bool("verbose")
 		settings.nonRecursiveShare = c.Bool("non-recursive")
+		settings.nonCached = c.Bool("no-caching")
 
 		// firstly, check if the chosen port is taken
 		if !(isPortAvailable(settings.port)) {
