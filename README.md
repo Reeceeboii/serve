@@ -1,4 +1,4 @@
-# Serve: Turn any local directory into a static file server over your local network
+# Serve: Turn any local directory into a static file server accessible over your local network
 
 Serve allows you to pick any directory on your machine, and expose its contents as a static file server. This means the 
 contents of this directory will then be accessible by any other machine on your local network, or even anyone else on the 
@@ -7,17 +7,23 @@ internet if you decide to port forward the host system.
 ## Usage
 `serve [global options] command [command options] [arguments...]`
 
+## Connections
+The port used for connections depends on the provided flags. The default port is 5000
+* From your own machine: `localhost:port` or `127.0.0.1:port`
+* From elsewhere on your network: `192.168.0.25:port` where `192.168.0.25` is your machine's IP. Serve will attempt to 
+tell you what this address is during launch.
+
 ## Help
 * `> serve -h`
 
 ## Flags
 ```
-   --port value, -p value       The local port that the server is to listen on (default: "5000")
-   --directory value, -d value  The directory to be served (default: ".")
-   --verbose, -v                Enable verbose logging (default: false)
-   --non-recursive, --nr        Disables recursive sharing (disallows access to child directories of shared root directory (default: false)
-   --no-caching, --nc           Disables HTTP Cache-Control headers to allow browser caching of server responses (default: false)
-   --help, -h                   show help (default: false)
+--port value, -p value       The local port that the server is to listen on (default: "5000")
+--directory value, -d value  The directory to be served (default: ".")
+--verbose, -v                Enable verbose logging (default: false)
+--non-recursive, --nr        Disables recursive sharing (disallows access to child directories of shared root directory (default: false)
+--no-caching, --nc           Disables HTTP Cache-Control headers to allow browser caching of server responses (default: false)
+--help, -h                   show help (default: false)
 ```
 
 ## Examples
