@@ -192,7 +192,10 @@ func getOutboundIPAddress() net.IP {
 
 	defer func() {
 		if err := conn.Close(); err != nil {
-
+			if settings.verbose {
+				log.Println("\t[-v]Error closing net.Dial in getOutboundIPAddress")
+			}
+			log.Fatal(err)
 		}
 	}()
 
