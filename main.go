@@ -10,6 +10,10 @@ import (
 	"strings"
 )
 
+const (
+	defaultPort = "5000"
+)
+
 // global settings read in from cli globals
 type settingsType struct {
 	// what port will the server share over
@@ -28,7 +32,7 @@ type clientInfoType struct {
 }
 
 // default settings
-var settings = settingsType{"5000", ".", false, false}
+var settings = settingsType{defaultPort, ".", false, false}
 
 // set up client settings
 var clientInfo = clientInfoType{nil}
@@ -101,39 +105,69 @@ func nonRecursiveSharingMiddleware(next http.Handler) http.Handler {
 			isn't both a directory (ending in '/') AND only of len() 1, as that would block path '/' itself and make
 			the root of the server inaccessible.
 		*/
-		if strings.HasSuffix(r.URL.Path, "/") && len(r.URL.Path) > 1 {
+		path := r.URL.Path
+
+		// let the root requests through
+		if path == "/" {
+			next.ServeHTTP(w, r)
+			return
+			// reject any directory requests
+		} else if strings.Contains(path, "/") && path[len(path)-1] == '/' {
 			if settings.verbose {
 				log.Println("\t[-v]Incoming request @ " + r.URL.Path + " DIR - BLOCKED w/ 404 response")
 			}
 			http.NotFound(w, r)
 			return
 		}
+		/*
+			if len(r.URL.Path) > 1 && (strings.Contains(r.URL.Path, "/") || r.URL.Path[0] != '/') {
+				if settings.verbose {
+					log.Println("\t[-v]Incoming request @ " + r.URL.Path + " DIR - BLOCKED w/ 404 response")
+				}
+				http.NotFound(w, r)
+				return
+			}
+		*/
+
 		next.ServeHTTP(w, r)
 	})
 }
 
 // given a port, check if that port is open for our program to attach itself to
 func isPortAvailable(port string) bool {
+	available := false
 	if settings.verbose {
 		log.Println("\t[-v]Checking if port " + port + " is available...")
 	}
 
+	// attempt to listen on the port to check if it is occupied or not
 	ln, err := net.Listen("tcp", ":"+port)
-	defer ln.Close()
+
 	if err != nil {
 		if settings.verbose {
 			log.Println("\t[-v]Port " + port + " is not available")
 		}
-		return false
+		available = false
+	} else {
+		if settings.verbose {
+			log.Println("\t[-v]Port " + port + " is available")
+		}
+		available = true
 	}
-	if settings.verbose {
-		log.Println("\t[-v]Port " + port + " is available")
+
+	// only try to close the listener if the connection was made
+	// we need to close else we won't be able to bind the actual server later
+	if ln != nil {
+		if err := ln.Close(); err != nil {
+			log.Fatal("Error closing net listen with port " + port)
+		}
 	}
-	return true
+
+	return available
 }
 
 // get the local address used for outbound requests, used to output to the user the address that
-// can be used to access their server from elsewhere inside their network
+// can be used to access  their server from elsewhere inside their network
 func getOutboundIPAddress() net.IP {
 	if settings.verbose {
 		log.Println("\t[-v]Querying local outbound IP address")
@@ -191,10 +225,24 @@ var app = cli.App{
 		settings.directory = c.String("directory")
 		settings.verbose = c.Bool("verbose")
 		settings.nonRecursiveShare = c.Bool("non-recursive")
+
+		// firstly, check if the chosen port is taken
 		if !(isPortAvailable(settings.port)) {
-			log.Println("Port " + settings.port + " is not able to listened on")
-			os.Exit(1)
+			log.Println("\tPort " + settings.port + " is not able to listened on")
+			// if it is, try the default/fallback port of 5000
+			if settings.port != defaultPort {
+				log.Println("\tTrying default port " + defaultPort)
+				if !(isPortAvailable(defaultPort)) {
+					log.Println("\tDefault port is not available to be listened on, please try another")
+					os.Exit(0)
+				} else {
+					// if the default is available, update the setting to use that
+					settings.port = defaultPort
+				}
+			}
 		}
+
+		// set up the rest of the settings, do some logging, and boot the server via serve()
 		clientInfo.localOutboundIP = getOutboundIPAddress()
 		if settings.verbose {
 			log.Printf("\t[-v]Settings: %+v\n", settings)
