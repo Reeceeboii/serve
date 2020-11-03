@@ -1,4 +1,4 @@
-# Serve: Turn any local directory into a static file server accessible over your local network
+# Serve: Turn any local directory into a static file server accessible over your network
 
 Serve allows you to pick any directory on your machine, and expose its contents as a static file server. This means the 
 contents of this directory will then be accessible by any other machine on your local network, or even anyone else on the 
